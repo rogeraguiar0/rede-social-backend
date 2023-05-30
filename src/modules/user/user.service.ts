@@ -2,6 +2,8 @@ import { Injectable } from "@nestjs/common";
 import { CreateUserDto } from "./dto/create-user.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
 import { UserRepository } from "./repositories/user.repositorie";
+import { redis } from "src/redis/redis.service";
+import { UsersJobs } from "src/jobs/users.jobs";
 
 @Injectable()
 export class UserService {
@@ -14,7 +16,24 @@ export class UserService {
   }
 
   async findAll() {
-    return await this.usersRepository.findAll();
+    const usersJobs = new UsersJobs();
+    const usersFromCache = await redis.get("getAllUsers");
+    const isUsersFromCacheStale = !(await redis.get("getAllUsers:validation"));
+
+    if (isUsersFromCacheStale) {
+      console.log("is stale");
+      await usersJobs.setAllUsersProducer();
+    }
+
+    if (usersFromCache) {
+      return JSON.parse(usersFromCache);
+    }
+
+    const users = await this.usersRepository.findAll();
+
+    await redis.set("getAllUsers", JSON.stringify(users));
+
+    return users;
   }
 
   async findOne(id: string) {
